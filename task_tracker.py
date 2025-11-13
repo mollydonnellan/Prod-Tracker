@@ -71,6 +71,7 @@ if st.button("💾 Log Task"):
         st.success(f"✅ Logged {st.session_state.activity_type} for {user_name}!")
 
 # --- Show Daily Summary ---
+# --- Show Daily Summary ---
 if st.button("📅 Show Daily Summary"):
     user_name = st.session_state.user_name
     if not user_name.strip():
@@ -86,8 +87,18 @@ if st.button("📅 Show Daily Summary"):
 
             today = datetime.now(eastern).date()
             df_today = df[df["timestamp"].dt.date == today]
-
+            
             if not df_today.empty:
+                # --- Summary counts ---
+                ticket_count = (df_today["activity_type"] == "Ticket").sum()
+                qa_count = (df_today["activity_type"] == "QA").sum()
+                adhoc_count = (df_today["activity_type"] == "Ad Hoc / Other").sum()
+
+                st.subheader(f"📊 {user_name}’s Daily Summary")
+                st.write(f"Tickets: {ticket_count} • QAs: {qa_count} • Ad Hoc: {adhoc_count}")
+                # --- Sort by timestamp ---
+                df_today = df_today.sort_values("timestamp").reset_index(drop=True)
+
                 # --- Format hour ranges ---
                 df_today["hour_range"] = df_today["timestamp"].dt.hour.apply(
                     lambda h: f"{h}:00–{h+1}:00"
@@ -114,6 +125,28 @@ if st.button("📅 Show Daily Summary"):
                 st.subheader(f"📋 {user_name}’s Summary for Today (EST)")
                 st.dataframe(grouped)
 
+                # --- Calculate durations between tasks ---
+                df_today["duration"] = df_today["timestamp"].diff().dt.total_seconds() / 3600  # hours
+
+                # --- Identify tasks over 1 hour ---
+                possible_ticketable = []
+                for i, row in df_today.iterrows():
+                    if i == 0:
+                        continue  # skip first row
+                    if row["duration"] >= 1:  # threshold = 1 hour
+                        summary = summarize_row(row)
+                        possible_ticketable.append(
+                            f"{row['timestamp'].strftime('%H:%M')} → {summary} ({row['duration']:.1f} hr)"
+                        )
+
+                # --- Display Possible Ticketable Items ---
+                st.subheader("⚠️ Possible Ticketable Items (Tasks >1 hour)")
+                if possible_ticketable:
+                    for item in possible_ticketable:
+                        st.write(item)
+                else:
+                    st.info("No tasks over 1 hour found today.")
+
             else:
                 # No tasks today
                 all_hours = [f"{h}:00–{h+1}:00" for h in range(8, 18)]
@@ -121,6 +154,7 @@ if st.button("📅 Show Daily Summary"):
                 st.dataframe(pd.DataFrame({"hour_range": all_hours, "summary": ["No tasks logged"]*len(all_hours)}))
         else:
             st.info("No logs found yet.")
+
 
 if st.button("🔄 Resume Last Session"):
     if st.session_state.user_name:
